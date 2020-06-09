@@ -63,6 +63,9 @@ struct retro_core_option_definition option_defs_us[] = {
 #ifdef HAVE_THR_AL
             {"angrylion", "Angrylion"},
 #endif
+#ifdef HAVE_PARALLEL_RDP
+            {"parallel", "paraLLEl-RDP"},
+#endif
             {"gliden64", "GLideN64"},
             {NULL, NULL},
         },
@@ -783,6 +786,75 @@ struct retro_core_option_definition option_defs_us[] = {
         },
         "False"
     },
+#ifdef HAVE_PARALLEL_RDP
+    {
+        CORE_NAME "-parallel-rdp-synchronous",
+        "(paraLLEl-RDP) Synchronous RDP",
+        "Enable full accuracy for CPU accessed frame buffers",
+        {
+            { "enabled", NULL },
+            { "disabled", NULL },
+        }
+    },
+    {
+        CORE_NAME "-parallel-rdp-interlacing",
+        "(ParaLLEl-RDP) VI interlacing",
+        "Allow VI interlacing/serrate bits",
+        {
+            { "enabled", NULL },
+            { "disabled", NULL },
+        }
+    },
+    {
+        CORE_NAME "-parallel-rdp-divot-filter",
+        "(ParaLLEl-RDP) VI Divot filter",
+        "Allow VI divot filter, cleans up stray black pixels",
+        {
+            { "enabled", NULL },
+            { "disabled", NULL },
+        }
+
+    },
+    {
+        CORE_NAME "-parallel-rdp-gamma-dither",
+        "(ParaLLEl-RDP) VI Gamma dither",
+        "Allow VI gamma dither",
+        {
+            { "enabled", NULL },
+            { "disabled", NULL },
+        }
+
+    },
+    {
+        CORE_NAME "-parallel-rdp-vi-aa",
+        "(ParaLLEl-RDP) VI anti-aliasing",
+        "Allow VI anti-aliased fetch filter, smooths polygon edges",
+        {
+            { "enabled", NULL },
+            { "disabled", NULL },
+        }
+
+    },
+    {
+        CORE_NAME "-parallel-rdp-vi-bilinear",
+        "(ParaLLEl-RDP) VI bilinear",
+        "Allow VI bilinear scaling on scanout",
+        {
+            { "enabled", NULL },
+            { "disabled", NULL },
+        }
+
+    },
+    {
+        CORE_NAME "-parallel-rdp-dither-filter",
+        "(ParaLLEl-RDP) VI dither filter",
+        "Allow VI de-dither filter, recovers significant color depth",
+        {
+            { "enabled", NULL },
+            { "disabled", NULL },
+        }
+    },
+#endif
 #ifdef HAVE_THR_AL
     {
         CORE_NAME "-angrylion-vioverlay",

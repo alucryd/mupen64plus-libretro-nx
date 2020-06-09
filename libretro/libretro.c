@@ -94,6 +94,13 @@ struct rgba
 extern struct rgba prescale[PRESCALE_WIDTH * PRESCALE_HEIGHT];
 #endif // HAVE_THR_AL
 
+#if defined(HAVE_PARALLEL_RDP)
+#include "../mupen64plus-video-paraLLEl/parallel.h"
+
+static struct retro_hw_render_callback hw_render;
+static struct retro_hw_render_context_negotiation_interface_vulkan hw_context_negotiation;
+#endif
+
 struct retro_perf_callback perf_cb;
 retro_get_cpu_features_t perf_get_cpu_features_cb = NULL;
 
@@ -315,8 +322,27 @@ static void* EmuThreadFunction(void* param)
     }
 }
 
-void reinit_gfx_plugin(void)
+static void reinit_gfx_plugin(void)
 {
+#ifdef HAVE_PARALLEL_RDP
+    if (current_rdp_type == RDP_PLUGIN_PARALLEL)
+    {
+        const struct retro_hw_render_interface_vulkan *vulkan;
+        if (!environ_cb(RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE, &vulkan) || !vulkan)
+        {
+            if (log_cb)
+                log_cb(RETRO_LOG_ERROR, "Failed to obtain Vulkan interface.\n");
+            vulkan = NULL;
+        }
+        parallel_set_vulkan_interface(vulkan);
+
+        // On first context init, the ROM is not loaded yet, so defer initialization of the plugin.
+        // On context destroy/resets however, just initialize right away.
+        if (!first_context_reset)
+            parallel_init();
+    }
+#endif
+
     if(first_context_reset)
     {
         first_context_reset = false;
@@ -403,7 +429,9 @@ void retro_set_environment(retro_environment_t cb)
 
 void retro_get_system_info(struct retro_system_info *info)
 {
-#if defined(HAVE_OPENGLES2)
+#if defined(HAVE_PARALLEL_RDP)
+    info->library_name = "Mupen64Plus-Next Vulkan";
+#elif defined(HAVE_OPENGLES2)
     info->library_name = "Mupen64Plus-Next GLES2";
 #elif defined(HAVE_OPENGLES3)
     info->library_name = "Mupen64Plus-Next GLES3";
@@ -581,6 +609,10 @@ static void update_variables(bool startup)
           {
              plugin_connect_rdp_api(RDP_PLUGIN_ANGRYLION);
           }
+          else if (!strcmp(var.value, "parallel"))
+          {
+             plugin_connect_rdp_api(RDP_PLUGIN_PARALLEL);
+          }
        }
        else
        {
@@ -594,7 +626,7 @@ static void update_variables(bool startup)
           if (!strcmp(var.value, "hle"))
           {
              // If we use angrylion with hle, we will force parallel if available!
-             if(current_rdp_type != RDP_PLUGIN_ANGRYLION)
+             if(current_rdp_type != RDP_PLUGIN_ANGRYLION && current_rdp_type != RDP_PLUGIN_PARALLEL)
              {
                 plugin_connect_rsp_api(RSP_PLUGIN_HLE);
              }
@@ -624,7 +656,7 @@ static void update_variables(bool startup)
        }
        else
        {
-          if(current_rdp_type != RDP_PLUGIN_ANGRYLION)
+          if(current_rdp_type != RDP_PLUGIN_ANGRYLION && current_rdp_type != RDP_PLUGIN_PARALLEL)
           {
                 plugin_connect_rsp_api(RSP_PLUGIN_HLE);
           }
@@ -1007,8 +1039,8 @@ static void update_variables(bool startup)
 
        // If we use Angrylion, we force 640x480
        // TODO: ?
-#ifdef HAVE_THR_AL
-       if(current_rdp_type == RDP_PLUGIN_ANGRYLION)
+#if defined(HAVE_THR_AL) || defined(HAVE_PARALLEL_RDP)
+       if(current_rdp_type == RDP_PLUGIN_ANGRYLION || current_rdp_type == RDP_PLUGIN_PARALLEL)
        {
           retro_screen_width = 640;
           retro_screen_height = 480;
@@ -1041,8 +1073,8 @@ static void update_variables(bool startup)
              EnableFrameDuping = 1;
        }
 
-#ifdef HAVE_THR_AL
-       if(current_rdp_type == RDP_PLUGIN_ANGRYLION)
+#if defined(HAVE_THR_AL) || defined(HAVE_PARALLEL_RDP)
+       if(current_rdp_type == RDP_PLUGIN_ANGRYLION || current_rdp_type == RDP_PLUGIN_PARALLEL)
        {
            // We always want frame duping here, the result will be different from GLideN64
            // This is always prefered here!
@@ -1167,6 +1199,60 @@ static void update_variables(bool startup)
              IgnoreTLBExceptions = 2;
        }
     }
+
+#ifdef HAVE_PARALLEL_RDP
+    if (current_rdp_type == RDP_PLUGIN_PARALLEL)
+    {
+        var.key = CORE_NAME "-parallel-rdp-synchronous";
+        var.value = NULL;
+        if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+            parallel_set_synchronous_rdp(!strcmp(var.value, "enabled"));
+        else
+            parallel_set_synchronous_rdp(true);
+
+        var.key = CORE_NAME "-parallel-rdp-interlacing";
+        var.value = NULL;
+        if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+            parallel_set_interlacing(!strcmp(var.value, "enabled"));
+        else
+            parallel_set_interlacing(true);
+
+        var.key = CORE_NAME "-parallel-rdp-divot-filter";
+        var.value = NULL;
+        if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+            parallel_set_divot_filter(!strcmp(var.value, "enabled"));
+        else
+            parallel_set_divot_filter(true);
+
+        var.key = CORE_NAME "-parallel-rdp-gamma-dither";
+        var.value = NULL;
+        if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+            parallel_set_gamma_dither(!strcmp(var.value, "enabled"));
+        else
+            parallel_set_gamma_dither(true);
+
+        var.key = CORE_NAME "-parallel-rdp-vi-aa";
+        var.value = NULL;
+        if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+            parallel_set_vi_aa(!strcmp(var.value, "enabled"));
+        else
+            parallel_set_vi_aa(true);
+
+        var.key = CORE_NAME "-parallel-rdp-vi-bilinear";
+        var.value = NULL;
+        if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+            parallel_set_vi_scale(!strcmp(var.value, "enabled"));
+        else
+            parallel_set_vi_scale(true);
+
+        var.key = CORE_NAME "-parallel-rdp-dither-filter";
+        var.value = NULL;
+        if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+            parallel_set_dither_filter(!strcmp(var.value, "enabled"));
+        else
+            parallel_set_dither_filter(true);
+    }
+#endif
 
 #ifdef HAVE_THR_AL
     if (current_rdp_type == RDP_PLUGIN_ANGRYLION)
@@ -1315,6 +1401,10 @@ static void context_destroy(void)
     {
        glsm_ctl(GLSM_CTL_STATE_CONTEXT_DESTROY, NULL);
     }
+#ifdef HAVE_PARALLEL_RDP
+    if (current_rdp_type == RDP_PLUGIN_PARALLEL)
+        parallel_deinit();
+#endif
 }
 
 static bool context_framebuffer_lock(void *data)
@@ -1322,6 +1412,38 @@ static bool context_framebuffer_lock(void *data)
     //if (!stop)
      //   return false;
     return true;
+}
+
+static bool retro_init_vulkan(void)
+{
+#if defined(HAVE_PARALLEL_RDP)
+   hw_render.context_type    = RETRO_HW_CONTEXT_VULKAN;
+   hw_render.version_major   = VK_MAKE_VERSION(1, 1, 0);
+   hw_render.context_reset   = context_reset;
+   hw_render.context_destroy = context_destroy;
+
+   if (!environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render))
+   {
+      if (log_cb)
+         log_cb(RETRO_LOG_ERROR, "mupen64plus: libretro frontend doesn't have Vulkan support.\n");
+      return false;
+   }
+
+   hw_context_negotiation.interface_type = RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN;
+   hw_context_negotiation.interface_version = RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN_VERSION;
+   hw_context_negotiation.get_application_info = parallel_get_application_info;
+   hw_context_negotiation.create_device = parallel_create_device;
+   hw_context_negotiation.destroy_device = NULL;
+   if (!environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE, &hw_context_negotiation))
+   {
+      if (log_cb)
+         log_cb(RETRO_LOG_ERROR, "mupen64plus: libretro frontend doesn't have context negotiation support.\n");
+   }
+
+   return true;
+#else
+   return false;
+#endif
 }
 
 bool retro_load_game(const struct retro_game_info *game)
@@ -1378,6 +1500,14 @@ bool retro_load_game(const struct retro_game_info *game)
         return false;
     }
 
+#ifdef HAVE_PARALLEL_RDP
+    if (current_rdp_type == RDP_PLUGIN_PARALLEL)
+    {
+        if (!retro_init_vulkan())
+            return false;
+    }
+#endif
+
     game_data = malloc(game->size);
     memcpy(game_data, game->data, game->size);
     game_size = game->size;
@@ -1385,7 +1515,7 @@ bool retro_load_game(const struct retro_game_info *game)
     if (!emu_step_load_data())
         return false;
 
-    if(current_rdp_type == RDP_PLUGIN_GLIDEN64)
+    if(current_rdp_type == RDP_PLUGIN_GLIDEN64 || current_rdp_type == RDP_PLUGIN_PARALLEL)
     {
        first_context_reset = true;
     }
@@ -1430,7 +1560,7 @@ void retro_run (void)
 {
     libretro_swap_buffer = false;
     static bool updated = false;
-    
+
     if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated) {
        update_variables(false);
        update_controllers();
@@ -1466,9 +1596,18 @@ void retro_run (void)
 #ifdef HAVE_THR_AL
        else if(current_rdp_type == RDP_PLUGIN_ANGRYLION)
        {
-          video_cb(prescale, retro_screen_width, retro_screen_height, screen_pitch);
+           video_cb(prescale, retro_screen_width, retro_screen_height, screen_pitch);
        }
 #endif // HAVE_THR_AL
+#ifdef HAVE_PARALLEL_RDP
+       else if (current_rdp_type == RDP_PLUGIN_PARALLEL)
+       {
+           parallel_profile_video_refresh_begin();
+           video_cb(parallel_frame_is_valid() ? RETRO_HW_FRAME_BUFFER_VALID : NULL,
+                   parallel_frame_width(), parallel_frame_height(), 0);
+           parallel_profile_video_refresh_end();
+       }
+#endif
     }
     else if(EnableFrameDuping)
     {
